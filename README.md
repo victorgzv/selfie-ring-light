@@ -58,20 +58,63 @@ everything filed into a "Halo" album in the camera roll.
 | Tap the light                  | Hide the controls; tap again to restore |
 | Tap the yellow bolt            | Light on/off                            |
 
-## Running it
+## Getting it on your phone
+
+### Scan a QR and run it (fastest, no build)
 
 ```bash
 npm install
-npx expo start
+npx expo start          # add --tunnel if your phone is on a different network
 ```
 
-The camera needs a real device or a development build — `expo-camera`,
-`expo-brightness` and `expo-media-library` are native modules, so Expo Go will
-not do. Build one with:
+Install **Expo Go** from the App Store or Play Store, scan the QR code, done.
+
+Every native module this app uses — `expo-camera`, `expo-brightness`,
+`expo-media-library`, `expo-haptics`, Reanimated, Gesture Handler, SVG — ships
+inside Expo Go for SDK 57, so nothing needs compiling. Two cosmetic
+differences: the permission dialogs say "Expo Go" rather than "Halo", because
+config plugins do not apply inside Expo Go, and captures are attributed to Expo
+Go in your library. They still land in the Halo album.
+
+Use a **physical phone**, not a simulator. The iOS Simulator has no camera at
+all and neither simulator has a real backlight to dim, so the two things this
+app is actually for do not work there.
+
+### Scan a QR and install it as its own app
+
+That needs a build. [EAS](https://docs.expo.dev/build/introduction/) does it in
+the cloud — no Xcode, no Android Studio. `eas.json` in this repo is already set
+up for it:
 
 ```bash
-npx expo run:ios      # or run:android
+npm install -g eas-cli
+eas login
+eas init                              # links the project, writes the id into app.json
+eas build -p android --profile preview
 ```
+
+When it finishes, EAS shows a QR code. Scan it on an Android phone and it
+downloads and installs the APK — a real, standalone Halo on your home screen
+that runs without Expo Go or a laptop. You will have to allow "install unknown
+apps" the first time.
+
+**iOS is harder, and not because of this app.** Apple will not let you install
+an app on a device without a signing identity, so `eas build -p ios --profile
+preview` needs a paid Apple Developer account ($99/year) and your device's UDID
+registered, or a TestFlight upload. Without one, Expo Go is the way in on iOS.
+`--profile preview:simulator` builds a free simulator-only iOS app if you have a
+Mac, though see the caveat about simulators above.
+
+### Building locally instead
+
+```bash
+npx expo run:ios      # needs Xcode
+npx expo run:android  # needs Android Studio
+```
+
+This is also the path if you later add a native module Expo Go does not carry;
+at that point `npx expo install expo-dev-client` plus a `development` profile in
+`eas.json` gets the QR-scanning workflow back with your own modules baked in.
 
 ## Layout of the code
 
