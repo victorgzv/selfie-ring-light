@@ -36,10 +36,11 @@ import {
   FlipCameraIcon,
   PhotoIcon,
   SlidersIcon,
+  SunIcon,
   TimerIcon,
   VideoIcon,
 } from '@/components/icons';
-import { dialToOutput } from '@/lib/colour';
+import { dialToOutput, rgbToCss } from '@/lib/colour';
 import {
   errorHaptic,
   heavyHaptic,
@@ -48,7 +49,13 @@ import {
   successHaptic,
   tickHaptic,
 } from '@/lib/haptics';
-import { rgbForTemperature, temperatureById, type TemperatureId } from '@/lib/presets';
+import {
+  MAX_MODE_COLOUR,
+  isFullScreenStyle,
+  rgbForTemperature,
+  temperatureById,
+  type TemperatureId,
+} from '@/lib/presets';
 import { useLightStore, type TimerSeconds } from '@/lib/store';
 import { useMediaSaver } from '@/lib/useMediaSaver';
 import { useScreenBrightness } from '@/lib/useScreenBrightness';
@@ -82,14 +89,29 @@ export default function LightScreen() {
   const timerSeconds = useLightStore((s) => s.timerSeconds);
   const setTimerSeconds = useLightStore((s) => s.setTimerSeconds);
   const setIntensity = useLightStore((s) => s.setIntensity);
+  const toggleMaxMode = useLightStore((s) => s.toggleMaxMode);
 
   const temperature = temperatureById(temperatureId);
-  const colour = useMemo(() => rgbForTemperature(temperatureId), [temperatureId]);
+  /** Max mode trades the tint for output: pure white is the brightest thing a
+   *  panel can show, and any colour cast costs luminance. */
+  const maxMode = isFullScreenStyle(ringStyleId);
+  const colour = useMemo(
+    () => (maxMode ? MAX_MODE_COLOUR : rgbForTemperature(temperatureId)),
+    [maxMode, temperatureId],
+  );
+  const colourCss = useMemo(() => rgbToCss(colour), [colour]);
 
   /** Dial position, 0–1. The source of truth for the light on the UI thread. */
   const dial = useSharedValue(useLightStore.getState().intensity);
   const output = useDerivedValue(() => dialToOutput(dial.value));
   const flash = useSharedValue(0);
+  /** Eases the master switch so the panel does not snap between states. */
+  const lit = useSharedValue(lightOn ? 1 : 0);
+  /**
+   * How lit the whole panel is. Non-zero only in Max mode, where the screen
+   * itself is the lamp rather than a ring drawn on it.
+   */
+  const floodLevel = useDerivedValue(() => (maxMode ? output.value * lit.value : 0));
 
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
@@ -127,6 +149,10 @@ export default function LightScreen() {
   useEffect(() => {
     settingsRef.current = { lightOn, syncScreenBrightness };
   }, [lightOn, syncScreenBrightness]);
+
+  useEffect(() => {
+    lit.value = withTiming(lightOn ? 1 : 0, { duration: 260 });
+  }, [lightOn, lit]);
 
   /**
    * The backlight is the biggest lever on how much light actually lands on a
@@ -402,6 +428,14 @@ export default function LightScreen() {
   // ── Derived styles ────────────────────────────────────────────────────────
 
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
+  const floodStyle = useAnimatedStyle(() => ({ opacity: floodLevel.value }));
+
+  /**
+   * In Max mode the chrome would be white-on-white, so it gets a dark bar
+   * behind it. Hiding the chrome (tap the light) drops the scrim with it and
+   * leaves the display genuinely edge-to-edge white.
+   */
+  const scrim = maxMode && lightOn ? 'rgba(0,0,0,0.86)' : 'transparent';
 
   const chromeStyle = useAnimatedStyle(() => ({
     opacity: withTiming(chromeHidden ? 0 : 1, { duration: 220 }),
@@ -429,6 +463,11 @@ export default function LightScreen() {
     setTimerSeconds(TIMER_CHOICES[(index + 1) % TIMER_CHOICES.length] ?? 0);
   }, [setTimerSeconds, timerSeconds]);
 
+  const onToggleMax = useCallback(() => {
+    pressHaptic();
+    toggleMaxMode();
+  }, [toggleMaxMode]);
+
   const onChangeMode = useCallback(
     (next: CameraMode) => {
       if (recording || next === mode) return;
@@ -441,9 +480,20 @@ export default function LightScreen() {
   const chromeEvents = chromeHidden ? 'none' : 'auto';
 
   return (
-    <View className="flex-1 bg-ink" style={{ paddingTop: insets.top }}>
+    <View className="flex-1 bg-ink">
+      {/* Max mode's light source: the whole panel, painted behind every other
+          layer. The camera window stacks the same black-then-colour pair over
+          its own square corners, so they stay invisible at any dial position. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: colourCss }, floodStyle]}
+      />
+
       {/* ── Top bar ── */}
-      <Animated.View style={chromeStyle} pointerEvents={chromeEvents}>
+      <Animated.View
+        style={[chromeStyle, { paddingTop: insets.top, backgroundColor: scrim }]}
+        pointerEvents={chromeEvents}
+      >
         <View className="h-14 flex-row items-center justify-between px-5">
           <IconButton
             accessibilityLabel="Light settings"
@@ -468,9 +518,17 @@ export default function LightScreen() {
               </View>
             </Animated.View>
           ) : (
-            <Text className="text-[13px] font-medium tracking-[3px] text-white/30">
-              HALO
-            </Text>
+            // ── Brand slot ──────────────────────────────────────────────────
+            // Put your app name here when you have one. Uncomment and edit:
+            //
+            // <Text className="text-[13px] font-medium tracking-[3px] text-white/30">
+            //   YOUR NAME
+            // </Text>
+            //
+            // The name also appears in two other places: `expo.name` in
+            // app.json (home screen and permission dialogs) and ALBUM_NAME in
+            // lib/useMediaSaver.ts (the camera-roll album shots are filed to).
+            <View />
           )}
 
           <IconButton
@@ -510,7 +568,9 @@ export default function LightScreen() {
                 active
                 granted={cameraGranted}
                 maskColour="#000000"
-                rimColour="rgba(255,255,255,0.16)"
+                floodLevel={floodLevel}
+                floodColour={colourCss}
+                rimColour={maxMode ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.16)'}
                 onMountError={say}
               />
 
@@ -532,7 +592,12 @@ export default function LightScreen() {
                   pointerEvents="none"
                   style={[StyleSheet.absoluteFill, styles.centre]}
                 >
-                  <Text className="text-[76px] font-light text-white">{countdown}</Text>
+                  <Text
+                    className="text-[76px] font-light"
+                    style={{ color: maxMode && lightOn ? '#000000' : '#FFFFFF' }}
+                  >
+                    {countdown}
+                  </Text>
                 </Animated.View>
               )}
 
@@ -543,7 +608,9 @@ export default function LightScreen() {
                 >
                   <Pressable
                     onPress={() => void requestCameraPermission()}
-                    className="rounded-full bg-white/15 px-5 py-2.5"
+                    // Solid dark rather than translucent white: this sits on
+                    // the light, which is white in Max mode.
+                    className="rounded-full bg-black/75 px-5 py-2.5"
                   >
                     <Text className="text-[13px] font-semibold text-white">
                       Enable camera preview
@@ -576,7 +643,10 @@ export default function LightScreen() {
 
       {/* ── Controls ── */}
       <Animated.View
-        style={[chromeStyle, { paddingBottom: Math.max(insets.bottom, 14) }]}
+        style={[
+          chromeStyle,
+          { paddingBottom: Math.max(insets.bottom, 14), backgroundColor: scrim },
+        ]}
         pointerEvents={chromeEvents}
       >
         <View className="mb-1 flex-row items-center justify-center gap-2">
@@ -613,6 +683,25 @@ export default function LightScreen() {
               {timerSeconds === 0 ? 'Off' : `${timerSeconds}s`}
             </Text>
           </Pressable>
+
+          {/* The brightest mode is the one people reach for most, so it gets a
+              chip here rather than living only in Settings. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Maximum brightness, full white screen"
+            accessibilityState={{ selected: maxMode }}
+            onPress={onToggleMax}
+            style={{ backgroundColor: maxMode ? ACCENT : 'rgba(255,255,255,0.10)' }}
+            className="flex-row items-center gap-1.5 rounded-full px-3 py-2"
+          >
+            <SunIcon size={14} colour={maxMode ? '#000000' : '#FFFFFF'} />
+            <Text
+              className="text-[12px] font-semibold"
+              style={{ color: maxMode ? '#000000' : 'rgba(255,255,255,0.75)' }}
+            >
+              Max
+            </Text>
+          </Pressable>
         </View>
 
         <PresetArc
@@ -620,12 +709,13 @@ export default function LightScreen() {
           accent={ACCENT}
           onSelect={onSelectTemperature}
           onStep={selectHaptic}
+          dimmed={maxMode}
         />
 
         <LightReadout
           dial={dial}
-          temperatureLabel={temperature.label}
-          kelvin={temperature.kelvin}
+          // Max mode ignores temperature, so saying otherwise would be a lie.
+          detail={maxMode ? 'Max · pure white' : `${temperature.label} ${temperature.kelvin}K`}
           accent={ACCENT}
           lightOn={lightOn}
         />

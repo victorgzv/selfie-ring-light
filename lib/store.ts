@@ -19,6 +19,8 @@ type LightState = {
   intensity: number;
   temperatureId: TemperatureId;
   ringStyleId: RingStyleId;
+  /** What to fall back to when Max mode is switched off again. */
+  previousRingStyleId: RingStyleId;
   /** Flip the preview horizontally so it reads like a mirror. */
   mirrorPreview: boolean;
   /** Drive the hardware backlight from the dial as well as the pixels. */
@@ -33,6 +35,8 @@ type LightState = {
   setTemperatureId: (id: TemperatureId) => void;
   stepTemperature: (direction: 1 | -1) => void;
   setRingStyleId: (id: RingStyleId) => void;
+  /** Jump to full-screen white and back, from the capture screen. */
+  toggleMaxMode: () => void;
   setMirrorPreview: (value: boolean) => void;
   setSyncScreenBrightness: (value: boolean) => void;
   setHapticsEnabled: (value: boolean) => void;
@@ -48,6 +52,7 @@ export const useLightStore = create<LightState>()(
       intensity: 0.72,
       temperatureId: DEFAULT_TEMPERATURE_ID,
       ringStyleId: DEFAULT_RING_STYLE_ID,
+      previousRingStyleId: DEFAULT_RING_STYLE_ID,
       mirrorPreview: true,
       syncScreenBrightness: true,
       hapticsEnabled: true,
@@ -66,7 +71,20 @@ export const useLightStore = create<LightState>()(
         const target = TEMPERATURES[next];
         if (target) set({ temperatureId: target.id });
       },
-      setRingStyleId: (id) => set({ ringStyleId: id }),
+      setRingStyleId: (id) =>
+        set(
+          id === 'screen'
+            ? { ringStyleId: id, previousRingStyleId: get().ringStyleId }
+            : { ringStyleId: id, previousRingStyleId: id },
+        ),
+      toggleMaxMode: () => {
+        const { ringStyleId, previousRingStyleId } = get();
+        set(
+          ringStyleId === 'screen'
+            ? { ringStyleId: previousRingStyleId }
+            : { ringStyleId: 'screen', previousRingStyleId: ringStyleId },
+        );
+      },
       setMirrorPreview: (value) => set({ mirrorPreview: value }),
       setSyncScreenBrightness: (value) => set({ syncScreenBrightness: value }),
       setHapticsEnabled: (value) => set({ hapticsEnabled: value }),
@@ -75,13 +93,25 @@ export const useLightStore = create<LightState>()(
     {
       name: 'halo-light-settings',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted, from) => {
+        const state = persisted as Partial<LightState>;
+        if (from < 2) {
+          state.previousRingStyleId = DEFAULT_RING_STYLE_ID;
+        }
+        // A fallback of 'screen' would make the Max toggle a one-way door.
+        if (state.previousRingStyleId === 'screen') {
+          state.previousRingStyleId = DEFAULT_RING_STYLE_ID;
+        }
+        return state as LightState;
+      },
       // The light always comes up on, so `lightOn` is deliberately not persisted:
       // opening a ring light app and getting a black screen is a bad first second.
       partialize: ({
         intensity,
         temperatureId,
         ringStyleId,
+        previousRingStyleId,
         mirrorPreview,
         syncScreenBrightness,
         hapticsEnabled,
@@ -90,6 +120,7 @@ export const useLightStore = create<LightState>()(
         intensity,
         temperatureId,
         ringStyleId,
+        previousRingStyleId,
         mirrorPreview,
         syncScreenBrightness,
         hapticsEnabled,

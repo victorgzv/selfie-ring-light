@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
-import { type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/IconButton';
 import { CheckIcon, CloseIcon } from '@/components/icons';
 import { kelvinToRgb, rgbToCss } from '@/lib/colour';
+import { selectHaptic, testHaptics } from '@/lib/haptics';
 import { RING_STYLES, TEMPERATURES } from '@/lib/presets';
 import { useLightStore } from '@/lib/store';
 
@@ -13,6 +14,7 @@ const ACCENT = '#FFD400';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const [hapticsResult, setHapticsResult] = useState<string | null>(null);
 
   const ringStyleId = useLightStore((s) => s.ringStyleId);
   const setRingStyleId = useLightStore((s) => s.setRingStyleId);
@@ -49,7 +51,10 @@ export default function SettingsScreen() {
               title={style.label}
               caption={style.hint}
               selected={ringStyleId === style.id}
-              onPress={() => setRingStyleId(style.id)}
+              onPress={() => {
+                selectHaptic();
+                setRingStyleId(style.id);
+              }}
             />
           ))}
         </Section>
@@ -64,7 +69,10 @@ export default function SettingsScreen() {
               title={`${temperature.label} · ${temperature.kelvin}K`}
               caption={temperature.hint}
               selected={temperatureId === temperature.id}
-              onPress={() => setTemperatureId(temperature.id)}
+              onPress={() => {
+                selectHaptic();
+                setTemperatureId(temperature.id);
+              }}
               swatch={rgbToCss(kelvinToRgb(temperature.kelvin))}
             />
           ))}
@@ -89,6 +97,23 @@ export default function SettingsScreen() {
             value={hapticsEnabled}
             onChange={setHapticsEnabled}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Test haptics"
+            onPress={() => {
+              setHapticsResult(null);
+              void testHaptics().then(setHapticsResult);
+            }}
+            className="border-b border-ink-line px-4 py-3.5"
+          >
+            <Text className="text-[15px] font-medium" style={{ color: ACCENT }}>
+              Test haptics
+            </Text>
+            <Text className="mt-0.5 text-[12px] leading-4 text-white/40">
+              {hapticsResult ??
+                'Fires three taps. If you feel nothing, the cause is below the app.'}
+            </Text>
+          </Pressable>
         </Section>
 
         <Section title="Tips">

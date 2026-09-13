@@ -39,6 +39,20 @@ type Props = {
 const LAYER_SPINS = [26000, -34000, 44000] as const;
 
 /**
+ * Applies the breathing swell with an amplitude that shrinks to nothing as the
+ * light approaches full.
+ *
+ * The swell used to be a flat percentage at every level, which meant 100% was
+ * really an oscillation between about 82% and 100% — up to a fifth of the
+ * output given away for an effect nobody asked for at the top of the dial.
+ * Now the ring is alive when it is dim and rock steady when it is maxed.
+ */
+function breathe(level: number, breath: number, amplitude: number): number {
+  'worklet';
+  return level * (1 - amplitude * (1 - level) * breath);
+}
+
+/**
  * The light itself.
  *
  * Everything is painted above the camera preview, which is what lets the ring
@@ -130,12 +144,12 @@ function RingLightImpl({
   }));
 
   const haloStyle = useAnimatedStyle(() => ({
-    opacity: level.value * (0.72 + 0.28 * breath.value),
+    opacity: breathe(level.value, breath.value, 0.3),
     transform: [{ scale: 0.94 + 0.1 * level.value }],
   }));
 
   const solidStyle = useAnimatedStyle(() => ({
-    opacity: level.value * (0.88 + 0.12 * breath.value),
+    opacity: breathe(level.value, breath.value, 0.14),
     transform: [{ scale: 0.985 + 0.015 * level.value }],
   }));
 
@@ -158,7 +172,9 @@ function RingLightImpl({
 
       <View style={{ width: size, height: size }}>
         {/* Bloom: light spilling past the ring onto the black. This is what
-            sells the illusion that the panel is actually glowing. */}
+            sells the illusion that the panel is actually glowing. Max mode
+            skips it — there is nothing dark left for it to bloom into. */}
+        {ringStyle !== 'screen' && (
         <Animated.View style={[StyleSheet.absoluteFill, haloStyle]}>
           <Svg width={size} height={size}>
             <Defs>
@@ -169,15 +185,16 @@ function RingLightImpl({
                 <Stop offset={windowStop} stopColor={fill} stopOpacity={0} />
                 {/* The bloom starts clear of the preview: glow lapping right up
                     against the window looks like haze on the lens. */}
-                <Stop offset={haloStart} stopColor={fill} stopOpacity={0.05} />
-                <Stop offset={haloStart + (1 - haloStart) * 0.4} stopColor={fill} stopOpacity={0.2} />
-                <Stop offset="0.9" stopColor={fill} stopOpacity={0.07} />
+                <Stop offset={haloStart} stopColor={fill} stopOpacity={0.1} />
+                <Stop offset={haloStart + (1 - haloStart) * 0.4} stopColor={fill} stopOpacity={0.42} />
+                <Stop offset="0.92" stopColor={fill} stopOpacity={0.16} />
                 <Stop offset="1" stopColor={fill} stopOpacity={0} />
               </RadialGradient>
             </Defs>
             <Circle cx={centre} cy={centre} r={centre} fill="url(#haloGradient)" />
           </Svg>
         </Animated.View>
+        )}
 
         {ringStyle === 'dots' &&
           dotPaths.map((ring, index) => (
@@ -260,11 +277,11 @@ function useLayerStyle(
   const phase = index * 0.33;
 
   return useAnimatedStyle(() => {
-    const swell = 0.82 + 0.18 * Math.sin((breath.value + phase) * Math.PI * 2);
+    const wave = 0.5 + 0.5 * Math.sin((breath.value + phase) * Math.PI * 2);
     const visible = ringLayerLevel(level.value, index);
 
     return {
-      opacity: visible * swell,
+      opacity: breathe(visible, wave, 0.18),
       transform: [
         { rotate: `${spin.value * 360 * direction}deg` },
         { scale: 0.97 + 0.03 * visible },

@@ -8,16 +8,17 @@ Built with Expo SDK 57, React Native 0.86, TypeScript, NativeWind (Tailwind) and
 Reanimated 4.
 
 <p align="center">
-  <img src="docs/screen-full.png" width="240" alt="Full intensity, 6500K">
-  <img src="docs/screen-warm.png" width="240" alt="72% intensity, 3400K">
-  <img src="docs/screen-low.png" width="240" alt="18% intensity, 2700K">
+  <img src="docs/screen-full.png" width="185" alt="Dots at full intensity, 6500K">
+  <img src="docs/screen-warm.png" width="185" alt="Dots at 72% intensity, 3400K">
+  <img src="docs/screen-max.png" width="185" alt="Max mode with controls">
+  <img src="docs/screen-max-bare.png" width="185" alt="Max mode with controls hidden">
 </p>
 
 <p align="center"><sub>
-100% at 6500 K · 72% at 3400 K · 18% at 2700 K. These are renders produced by
-feeding <code>lib/colour.ts</code> and <code>lib/geometry.ts</code> — the same
-modules the app runs — into a static SVG, not device screenshots, so the
-preview area is a placeholder. See <code>docs/</code>.
+Dots at 100%/6500 K and 72%/3400 K, then Max mode with and without the
+controls. These are renders produced by feeding <code>lib/colour.ts</code> and
+<code>lib/geometry.ts</code> — the same modules the app runs — into a static
+SVG, not device screenshots, so the preview area is a placeholder.
 </sub></p>
 
 ## What it does
@@ -36,14 +37,22 @@ the dial:
 converted to sRGB along the Planckian locus (Tanner Helland's piecewise fit), so
 "Tungsten" really is tungsten-coloured rather than a guessed shade of orange.
 
-**Four ring styles**, which differ in the catchlight they leave in the eyes:
+**Five light styles**, which trade catchlight shape against raw output:
 
-| Style  | Look                                             |
-| ------ | ------------------------------------------------ |
-| Dots   | Three counter-rotating rings of points (default) |
-| Halo   | One continuous soft ring                         |
-| Beauty | Wide feathered ring — softest shadows            |
-| Flood  | Whole panel lit, preview punched out of it       |
+| Style  | Look                                                      |
+| ------ | --------------------------------------------------------- |
+| Dots   | Three counter-rotating rings of points (default)          |
+| Halo   | One continuous soft ring                                  |
+| Beauty | Wide feathered ring — softest shadows                     |
+| Flood  | The area around the preview, in your chosen temperature   |
+| Max    | Every pixel white, edge to edge, bar the preview          |
+
+**Max** is the one to reach for when you need light rather than a look, and it
+has a chip on the main screen rather than living in Settings. It lights about
+90% of the panel against roughly 3% for Dots, so it is not a little brighter —
+it is a different order of magnitude. It ignores colour temperature on purpose:
+any tint costs luminance, and pure white is the most a display can emit. Tap
+the light to hide the controls and the whole screen becomes the lamp.
 
 **Capture.** Photos and video from either camera, a 3/10-second self timer, and
 everything filed into a "Halo" album in the camera roll.
@@ -57,6 +66,7 @@ everything filed into a "Halo" album in the camera roll.
 | Drag the curved row of names   | Colour temperature                      |
 | Tap the light                  | Hide the controls; tap again to restore |
 | Tap the yellow bolt            | Light on/off                            |
+| Tap **Max**                    | Full-screen white, and back again       |
 
 ## Getting it on your phone
 
@@ -155,6 +165,16 @@ and the haptic detents — and both are gated on a whole-number change.
 **Each dot ring is a single `<Path>`, not ~70 `<Circle>`s.** `dotsToPath` walks
 the ring and emits two arcs per dot, which takes the dot field from a couple of
 hundred nodes down to three animated views.
+
+**Haptics must not use `impactAsync` on Android.** There, expo-haptics drives
+the raw vibrator, and `selectionAsync` and `impactAsync('light')` run at
+amplitude 30 out of 255 — imperceptible on most phones, which makes the dial
+feel like it has no detents. `lib/haptics.ts` sends Android through
+`performAndroidHapticsAsync`, which uses `View.performHapticFeedback` and the
+platform's own constants. iOS keeps the `UIFeedbackGenerator` calls. Settings
+has a **Test haptics** row for when someone reports feeling nothing; note the
+Android path respects the system touch-feedback setting, so that is the first
+thing to check.
 
 **The React Compiler is deliberately off.** The hot path here is entirely
 worklets on the UI thread, so there is nothing for it to win. Turn it on by

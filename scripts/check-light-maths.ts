@@ -153,9 +153,21 @@ check(
   'dot spacing is even across rings',
   field.every((r) => {
     const spacing = (2 * Math.PI * r.radius) / r.dots.length;
-    return spacing > 8 && spacing < 16;
+    return spacing > 10 && spacing < 20;
   }),
 );
+// The dot field is the dimmest style precisely because it lights so little of
+// the panel. This guards the coverage against a well-meaning tidy-up that
+// shrinks the dots again.
+const litArea = field.reduce(
+  (sum, r) => sum + r.dots.length * Math.PI * r.dots[0]!.r ** 2,
+  0,
+);
+const bandArea = Math.PI * (CENTRE ** 2 - WINDOW ** 2);
+console.log(
+  `   lit area ${Math.round(litArea)}px² = ${((litArea / bandArea) * 100).toFixed(1)}% of the ring band`,
+);
+check('dots cover at least a quarter of the ring band', litArea / bandArea > 0.25);
 const path = dotsToPath(field[0]!.dots);
 check('the path emits two arcs per dot', (path.match(/a/g) ?? []).length === field[0]!.dots.length * 2);
 check('the path emits one move per dot', (path.match(/M/g) ?? []).length === field[0]!.dots.length);

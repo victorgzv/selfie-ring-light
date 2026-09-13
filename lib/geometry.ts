@@ -63,10 +63,14 @@ export function buildDotField(canvasSize: number, windowRadius: number): DotRing
   /** Space between the camera window edge and the outermost dots. */
   const band = outer - windowRadius;
 
+  // Fat dots with tight gaps. The dot field lights only a few percent of the
+  // panel, so its brightness is almost entirely a question of how much of the
+  // ring band is actually covered in pixels — thin dots look elegant and put
+  // out very little light.
   return [
-    buildDotRing(centre, windowRadius + band * 0.26, band * 0.072, band * 0.07),
-    buildDotRing(centre, windowRadius + band * 0.55, band * 0.063, band * 0.078),
-    buildDotRing(centre, windowRadius + band * 0.82, band * 0.052, band * 0.086),
+    buildDotRing(centre, windowRadius + band * 0.25, band * 0.095, band * 0.055),
+    buildDotRing(centre, windowRadius + band * 0.54, band * 0.083, band * 0.062),
+    buildDotRing(centre, windowRadius + band * 0.81, band * 0.07, band * 0.07),
   ];
 }
 

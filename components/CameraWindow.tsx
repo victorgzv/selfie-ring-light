@@ -1,6 +1,7 @@
 import { CameraView, type CameraMode, type CameraType } from 'expo-camera';
 import { forwardRef, memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 type Props = {
@@ -12,6 +13,17 @@ type Props = {
   zoom: number;
   /** Painted outside the circle — matches whatever the screen behind it is. */
   maskColour: string;
+  /**
+   * Opacity of a second mask laid over the first, in `floodColour`.
+   *
+   * In Max mode the screen behind the preview is `maskColour` with a flood of
+   * `floodColour` on top at this exact opacity, so stacking the same two layers
+   * here reproduces the background precisely and the square corners of the
+   * preview stay invisible at every dial position. Sits at 0 in every other
+   * mode, which costs nothing.
+   */
+  floodLevel: SharedValue<number>;
+  floodColour: string;
   /** Rim tint, so the preview edge stays readable against a bright ring. */
   rimColour: string;
   granted: boolean;
@@ -39,6 +51,8 @@ function CameraWindowImpl(
     mode,
     zoom,
     maskColour,
+    floodLevel,
+    floodColour,
     rimColour,
     granted,
     active,
@@ -49,6 +63,11 @@ function CameraWindowImpl(
   ref: React.ForwardedRef<CameraView>,
 ) {
   const radius = size / 2;
+  /** Square with a centred circular hole. evenodd makes the circle a hole
+   *  rather than a filled disc. */
+  const donut = `M0,0 H${size} V${size} H0 Z M${radius},0 A${radius},${radius} 0 1,0 ${radius},${size} A${radius},${radius} 0 1,0 ${radius},0 Z`;
+
+  const floodMaskStyle = useAnimatedStyle(() => ({ opacity: floodLevel.value }));
 
   return (
     <View style={{ width: size, height: size }}>
@@ -84,13 +103,25 @@ function CameraWindowImpl(
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       >
-        {/* Outer square minus a centred circle: evenodd turns the second
-            sub-path into a hole rather than a filled disc. */}
-        <Path
-          d={`M0,0 H${size} V${size} H0 Z M${radius},0 A${radius},${radius} 0 1,0 ${radius},${size} A${radius},${radius} 0 1,0 ${radius},0 Z`}
-          fill={maskColour}
-          fillRule="evenodd"
-        />
+        <Path d={donut} fill={maskColour} fillRule="evenodd" />
+      </Svg>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, floodMaskStyle]}
+      >
+        <Svg width={size} height={size}>
+          <Path d={donut} fill={floodColour} fillRule="evenodd" />
+        </Svg>
+      </Animated.View>
+
+      {/* The rim sits just inside the circle, so neither mask covers it. */}
+      <Svg
+        width={size}
+        height={size}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      >
         <Circle
           cx={radius}
           cy={radius}

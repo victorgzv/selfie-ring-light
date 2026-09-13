@@ -47,7 +47,7 @@ export const rgbForTemperature = (id: TemperatureId): Rgb =>
  * they differ in the catchlight they leave in the eyes, which is the part
  * people actually notice in the final shot.
  */
-export type RingStyleId = 'dots' | 'halo' | 'beauty' | 'flood';
+export type RingStyleId = 'dots' | 'halo' | 'beauty' | 'flood' | 'screen';
 
 export type RingStyle = {
   id: RingStyleId;
@@ -58,9 +58,20 @@ export type RingStyle = {
 export const RING_STYLES: readonly RingStyle[] = [
   { id: 'dots', label: 'Dots', hint: 'Three counter-rotating rings of points. Beaded catchlight.' },
   { id: 'halo', label: 'Halo', hint: 'One continuous soft ring. Clean circular catchlight.' },
-  { id: 'beauty', label: 'Beauty', hint: 'Wide feathered ring. Softest shadows, most output.' },
-  { id: 'flood', label: 'Flood', hint: 'Whole panel lit. Maximum light, no ring in the eyes.' },
+  { id: 'beauty', label: 'Beauty', hint: 'Wide feathered ring. Softest shadows of the ring styles.' },
+  { id: 'flood', label: 'Flood', hint: 'The area around the preview lit in your chosen temperature.' },
+  {
+    id: 'screen',
+    label: 'Max',
+    hint: 'Every pixel white, edge to edge, bar the preview. Ignores colour temperature — this is the most light the phone can physically make.',
+  },
 ] as const;
+
+/** Ring styles whose output is limited by how little of the panel they light. */
+export const isFullScreenStyle = (id: RingStyleId): boolean => id === 'screen';
+
+/** Pure white. Used by Max, which trades tint for the last of the output. */
+export const MAX_MODE_COLOUR = { r: 255, g: 255, b: 255 } as const;
 
 export const DEFAULT_RING_STYLE_ID: RingStyleId = 'dots';
 

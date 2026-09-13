@@ -27,6 +27,11 @@ type Props = {
   onSelect: (id: TemperatureId) => void;
   /** Fired when the wheel lands on a new label. Keep stable. */
   onStep: () => void;
+  /**
+   * Max mode ignores colour temperature, so the wheel is dimmed to say so. It
+   * stays usable — whatever you pick is what you get back on leaving Max.
+   */
+  dimmed?: boolean;
 };
 
 /**
@@ -38,7 +43,7 @@ type Props = {
  * would have been less code but could not tilt each label to match its
  * position on the curve, which is the whole character of the control.
  */
-function PresetArcImpl({ selected, accent, onSelect, onStep }: Props) {
+function PresetArcImpl({ selected, accent, onSelect, onStep, dimmed = false }: Props) {
   const count = TEMPERATURES.length;
   const selectedIndex = useMemo(
     () => Math.max(0, TEMPERATURES.findIndex((t) => t.id === selected)),
@@ -111,7 +116,10 @@ function PresetArcImpl({ selected, accent, onSelect, onStep }: Props) {
 
   return (
     <GestureDetector gesture={pan}>
-      <View className="h-[74px] w-full justify-start overflow-hidden">
+      <View
+        style={{ opacity: dimmed ? 0.35 : 1 }}
+        className="h-[74px] w-full justify-start overflow-hidden"
+      >
         {TEMPERATURES.map((temperature, index) => (
           <ArcLabel
             key={temperature.id}
