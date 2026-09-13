@@ -5,7 +5,9 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import {
   DEFAULT_RING_STYLE_ID,
   DEFAULT_TEMPERATURE_ID,
+  DEFAULT_WINDOW_SCALE,
   TEMPERATURES,
+  clampWindowScale,
   type RingStyleId,
   type TemperatureId,
 } from './presets';
@@ -21,6 +23,12 @@ type LightState = {
   ringStyleId: RingStyleId;
   /** What to fall back to when Max mode is switched off again. */
   previousRingStyleId: RingStyleId;
+  /**
+   * Size of the preview circle as a multiple of its default, set by pinching.
+   * Only applied in the flood styles, where the circle is a hole in a lit
+   * field and resizing it directly trades preview size against light output.
+   */
+  windowScale: number;
   /** Flip the preview horizontally so it reads like a mirror. */
   mirrorPreview: boolean;
   /** Drive the hardware backlight from the dial as well as the pixels. */
@@ -35,6 +43,7 @@ type LightState = {
   setTemperatureId: (id: TemperatureId) => void;
   stepTemperature: (direction: 1 | -1) => void;
   setRingStyleId: (id: RingStyleId) => void;
+  setWindowScale: (value: number) => void;
   /** Jump to full-screen white and back, from the capture screen. */
   toggleMaxMode: () => void;
   setMirrorPreview: (value: boolean) => void;
@@ -53,6 +62,7 @@ export const useLightStore = create<LightState>()(
       temperatureId: DEFAULT_TEMPERATURE_ID,
       ringStyleId: DEFAULT_RING_STYLE_ID,
       previousRingStyleId: DEFAULT_RING_STYLE_ID,
+      windowScale: DEFAULT_WINDOW_SCALE,
       mirrorPreview: true,
       syncScreenBrightness: true,
       hapticsEnabled: true,
@@ -77,6 +87,7 @@ export const useLightStore = create<LightState>()(
             ? { ringStyleId: id, previousRingStyleId: get().ringStyleId }
             : { ringStyleId: id, previousRingStyleId: id },
         ),
+      setWindowScale: (value) => set({ windowScale: clampWindowScale(value) }),
       toggleMaxMode: () => {
         const { ringStyleId, previousRingStyleId } = get();
         set(
@@ -93,17 +104,37 @@ export const useLightStore = create<LightState>()(
     {
       name: 'halo-light-settings',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 3,
       migrate: (persisted, from) => {
-        const state = persisted as Partial<LightState>;
+        // `temperatureId` is deliberately widened to string: the whole job here
+        // is handling ids that are no longer part of the union.
+        const state = persisted as Omit<Partial<LightState>, 'temperatureId'> & {
+          temperatureId?: string;
+        };
+
         if (from < 2) {
           state.previousRingStyleId = DEFAULT_RING_STYLE_ID;
         }
+        if (from < 3) {
+          // 'cloudy' became 'maxday' and 'shade' was dropped. A stored id that
+          // no longer exists would leave the wheel pointing at nothing.
+          if (state.temperatureId === 'cloudy' || state.temperatureId === 'shade') {
+            state.temperatureId = 'maxday';
+          }
+          state.windowScale = DEFAULT_WINDOW_SCALE;
+        }
+
         // A fallback of 'screen' would make the Max toggle a one-way door.
         if (state.previousRingStyleId === 'screen') {
           state.previousRingStyleId = DEFAULT_RING_STYLE_ID;
         }
-        return state as LightState;
+        // Belt and braces for anything else that has gone stale.
+        if (!TEMPERATURES.some((t) => t.id === state.temperatureId)) {
+          state.temperatureId = DEFAULT_TEMPERATURE_ID;
+        }
+        state.windowScale = clampWindowScale(state.windowScale ?? DEFAULT_WINDOW_SCALE);
+
+        return state as unknown as LightState;
       },
       // The light always comes up on, so `lightOn` is deliberately not persisted:
       // opening a ring light app and getting a black screen is a bad first second.
@@ -112,6 +143,7 @@ export const useLightStore = create<LightState>()(
         temperatureId,
         ringStyleId,
         previousRingStyleId,
+        windowScale,
         mirrorPreview,
         syncScreenBrightness,
         hapticsEnabled,
@@ -121,6 +153,7 @@ export const useLightStore = create<LightState>()(
         temperatureId,
         ringStyleId,
         previousRingStyleId,
+        windowScale,
         mirrorPreview,
         syncScreenBrightness,
         hapticsEnabled,

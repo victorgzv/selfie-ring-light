@@ -40,7 +40,7 @@ import {
   TimerIcon,
   VideoIcon,
 } from '@/components/icons';
-import { dialToOutput, rgbToCss } from '@/lib/colour';
+import { dialToOutput, luminance, rgbToCss } from '@/lib/colour';
 import {
   errorHaptic,
   heavyHaptic,
@@ -51,6 +51,9 @@ import {
 } from '@/lib/haptics';
 import {
   MAX_MODE_COLOUR,
+  MAX_WINDOW_SCALE,
+  clampWindowScale,
+  isFloodStyle,
   isFullScreenStyle,
   rgbForTemperature,
   temperatureById,
@@ -90,11 +93,15 @@ export default function LightScreen() {
   const setTimerSeconds = useLightStore((s) => s.setTimerSeconds);
   const setIntensity = useLightStore((s) => s.setIntensity);
   const toggleMaxMode = useLightStore((s) => s.toggleMaxMode);
+  const windowScale = useLightStore((s) => s.windowScale);
+  const setWindowScale = useLightStore((s) => s.setWindowScale);
 
   const temperature = temperatureById(temperatureId);
   /** Max mode trades the tint for output: pure white is the brightest thing a
    *  panel can show, and any colour cast costs luminance. */
   const maxMode = isFullScreenStyle(ringStyleId);
+  /** Flood and Max both light a field with the preview punched out of it. */
+  const floodMode = isFloodStyle(ringStyleId);
   const colour = useMemo(
     () => (maxMode ? MAX_MODE_COLOUR : rgbForTemperature(temperatureId)),
     [maxMode, temperatureId],
@@ -111,7 +118,24 @@ export default function LightScreen() {
    * How lit the whole panel is. Non-zero only in Max mode, where the screen
    * itself is the lamp rather than a ring drawn on it.
    */
-  const floodLevel = useDerivedValue(() => (maxMode ? output.value * lit.value : 0));
+  const floodLevel = useDerivedValue(() => (floodMode ? output.value * lit.value : 0));
+
+  /** Committed pinch scale, mirrored onto the UI thread. */
+  const committedScale = useSharedValue(useLightStore.getState().windowScale);
+  /** Live multiplier for the pinch in progress; 1 the rest of the time. */
+  const pinchFactor = useSharedValue(1);
+  const liveScale = useDerivedValue(() =>
+    clampWindowScale(committedScale.value * pinchFactor.value),
+  );
+  /**
+   * The flood styles lay the preview out at its largest and scale down, so a
+   * pinch never re-lays-out the camera surface and the preview is only ever
+   * downsampled. The ring styles have geometry tied to the window radius, so
+   * they keep the default size.
+   */
+  const windowScaleStyle = useDerivedValue(() =>
+    floodMode ? liveScale.value / MAX_WINDOW_SCALE : 1,
+  );
 
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('front');
@@ -153,6 +177,11 @@ export default function LightScreen() {
   useEffect(() => {
     lit.value = withTiming(lightOn ? 1 : 0, { duration: 260 });
   }, [lightOn, lit]);
+
+  // Covers hydration and any reset from Settings.
+  useEffect(() => {
+    committedScale.value = windowScale;
+  }, [committedScale, windowScale]);
 
   /**
    * The backlight is the biggest lever on how much light actually lands on a
@@ -208,6 +237,8 @@ export default function LightScreen() {
   // bug rather than a lamp, and the glow needs somewhere to fall off into.
   const ringSize = Math.max(140, Math.min(stage.width - 44, stage.height - 28));
   const windowRadius = ringSize * 0.295;
+  /** What the preview is actually laid out at — see `windowScaleStyle`. */
+  const windowLayoutRadius = floodMode ? windowRadius * MAX_WINDOW_SCALE : windowRadius;
 
   // ── Capture ───────────────────────────────────────────────────────────────
 
@@ -390,8 +421,47 @@ export default function LightScreen() {
   const swipeDetent = useSharedValue(0);
   const toggleChrome = useCallback(() => setChromeHidden((hidden) => !hidden), []);
 
+  const commitWindowScale = useCallback(
+    (value: number) => setWindowScale(value),
+    [setWindowScale],
+  );
+
+  const scaleDetent = useSharedValue(0);
+
   const stageGesture = useMemo(() => {
+    const pinch = Gesture.Pinch()
+      // Only the flood styles have a circle worth resizing; in the ring styles
+      // the window radius drives the ring geometry as well.
+      .enabled(floodMode)
+      .onBegin(() => {
+        scaleDetent.value = Math.round(committedScale.value * 20);
+      })
+      .onUpdate((event) => {
+        pinchFactor.value = event.scale;
+
+        const detent = Math.round(clampWindowScale(committedScale.value * event.scale) * 20);
+        if (detent !== scaleDetent.value) {
+          scaleDetent.value = detent;
+          runOnJS(tickHaptic)();
+        }
+      })
+      .onEnd(() => {
+        // Folding the gesture into the committed value and resetting the
+        // factor in the same frame keeps `liveScale` continuous, so the circle
+        // never jumps on release.
+        const next = clampWindowScale(committedScale.value * pinchFactor.value);
+        committedScale.value = next;
+        pinchFactor.value = 1;
+        runOnJS(commitWindowScale)(next);
+      })
+      .onFinalize(() => {
+        // A cancelled pinch leaves the factor stranded otherwise.
+        pinchFactor.value = 1;
+      });
+
     const swipe = Gesture.Pan()
+      // Two fingers down means a pinch, not a brightness drag.
+      .maxPointers(1)
       .activeOffsetY([-12, 12])
       .failOffsetX([-24, 24])
       .onBegin(() => {
@@ -422,8 +492,20 @@ export default function LightScreen() {
         if (success) runOnJS(toggleChrome)();
       });
 
-    return Gesture.Exclusive(swipe, tap);
-  }, [cameraGranted, commitIntensity, dial, swipeDetent, swipeStart, toggleChrome]);
+    return Gesture.Race(pinch, swipe, tap);
+  }, [
+    cameraGranted,
+    commitIntensity,
+    commitWindowScale,
+    committedScale,
+    dial,
+    floodMode,
+    pinchFactor,
+    scaleDetent,
+    swipeDetent,
+    swipeStart,
+    toggleChrome,
+  ]);
 
   // ── Derived styles ────────────────────────────────────────────────────────
 
@@ -436,6 +518,13 @@ export default function LightScreen() {
    * leaves the display genuinely edge-to-edge white.
    */
   const scrim = maxMode && lightOn ? 'rgba(0,0,0,0.86)' : 'transparent';
+
+  /**
+   * Whether whatever sits behind the preview is bright enough that ink on it
+   * has to be dark. A warm flood is still a dark-ish orange, so this is a
+   * luminance question rather than simply "is a flood style on".
+   */
+  const darkOnLight = floodMode && lightOn && luminance(colour) > 0.7;
 
   const chromeStyle = useAnimatedStyle(() => ({
     opacity: withTiming(chromeHidden ? 0 : 1, { duration: 220 }),
@@ -483,11 +572,14 @@ export default function LightScreen() {
     <View className="flex-1 bg-ink">
       {/* Max mode's light source: the whole panel, painted behind every other
           layer. The camera window stacks the same black-then-colour pair over
-          its own square corners, so they stay invisible at any dial position. */}
-      <Animated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: colourCss }, floodStyle]}
-      />
+          its own square corners, so they stay invisible at any dial position
+          and at any pinch size. */}
+      {maxMode && (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: colourCss }, floodStyle]}
+        />
+      )}
 
       {/* ── Top bar ── */}
       <Animated.View
@@ -555,11 +647,27 @@ export default function LightScreen() {
         >
           {stage.width > 0 && (
             <>
+              {/* Flood lights the stage rather than the whole display. Like
+                  Max, it sits behind the preview and lets the window mask its
+                  own corners, which is what lets the circle be pinched without
+                  a hole to keep in sync. */}
+              {ringStyleId === 'flood' && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { backgroundColor: colourCss },
+                    floodStyle,
+                  ]}
+                />
+              )}
+
               {/* Preview first, ring on top: the mask that squares off the
                   camera must never be painted over the dots. */}
               <CameraWindow
                 ref={cameraRef}
-                size={windowRadius * 2}
+                size={windowLayoutRadius * 2}
+                scale={windowScaleStyle}
                 facing={cameraFacing}
                 mirror={mirrorPreview && cameraFacing === 'front'}
                 mode={mode}
@@ -570,13 +678,11 @@ export default function LightScreen() {
                 maskColour="#000000"
                 floodLevel={floodLevel}
                 floodColour={colourCss}
-                rimColour={maxMode ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.16)'}
+                rimColour={darkOnLight ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.16)'}
                 onMountError={say}
               />
 
               <RingLight
-                width={stage.width}
-                height={stage.height}
                 size={ringSize}
                 windowRadius={windowRadius}
                 colour={colour}
@@ -594,7 +700,7 @@ export default function LightScreen() {
                 >
                   <Text
                     className="text-[76px] font-light"
-                    style={{ color: maxMode && lightOn ? '#000000' : '#FFFFFF' }}
+                    style={{ color: darkOnLight ? '#000000' : '#FFFFFF' }}
                   >
                     {countdown}
                   </Text>

@@ -15,13 +15,10 @@ import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg'
 
 import { ringLayerLevel, rgbToCss, type Rgb } from '@/lib/colour';
 import { buildDotField, dotsToPath } from '@/lib/geometry';
-import type { RingStyleId } from '@/lib/presets';
+import { isFloodStyle, type RingStyleId } from '@/lib/presets';
 
 type Props = {
-  /** Full stage box. Flood mode lights all of it. */
-  width: number;
-  height: number;
-  /** Side of the square the ring itself is drawn into, centred in the box. */
+  /** Side of the square the ring is drawn into, centred in the stage. */
   size: number;
   /** Radius of the hole the camera preview sits in. */
   windowRadius: number;
@@ -62,8 +59,6 @@ function breathe(level: number, breath: number, amplitude: number): number {
  * draws over that mask, so no layer ever eats the dots.
  */
 function RingLightImpl({
-  width,
-  height,
   size,
   windowRadius,
   colour,
@@ -85,15 +80,6 @@ function RingLightImpl({
       radius: ring.radius,
     }));
   }, [ringStyle, size, windowRadius]);
-
-  /** Whole stage minus the camera window: the shape flood mode lights up. */
-  const floodPath = useMemo(() => {
-    if (ringStyle !== 'flood') return '';
-    const cx = width / 2;
-    const cy = height / 2;
-    const r = windowRadius + 2;
-    return `M0,0 H${width} V${height} H0 Z M${cx},${cy - r} A${r},${r} 0 1,0 ${cx},${cy + r} A${r},${r} 0 1,0 ${cx},${cy - r} Z`;
-  }, [height, ringStyle, width, windowRadius]);
 
   /** Continuous 0→1 ramps, one per layer, converted to degrees at use. */
   const spin0 = useSharedValue(0);
@@ -139,10 +125,6 @@ function RingLightImpl({
   /** What every layer multiplies its opacity by. */
   const level = useDerivedValue(() => output.value * presence.value);
 
-  const floodStyle = useAnimatedStyle(() => ({
-    opacity: level.value,
-  }));
-
   const haloStyle = useAnimatedStyle(() => ({
     opacity: breathe(level.value, breath.value, 0.3),
     transform: [{ scale: 0.94 + 0.1 * level.value }],
@@ -160,21 +142,11 @@ function RingLightImpl({
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-      {ringStyle === 'flood' && (
-        <Animated.View style={[StyleSheet.absoluteFill, floodStyle]}>
-          <Svg width={width} height={height}>
-            {/* evenodd turns the circle sub-path into a hole, so the preview
-                stays visible while everything around it is lit. */}
-            <Path d={floodPath} fill={fill} fillRule="evenodd" />
-          </Svg>
-        </Animated.View>
-      )}
-
       <View style={{ width: size, height: size }}>
         {/* Bloom: light spilling past the ring onto the black. This is what
-            sells the illusion that the panel is actually glowing. Max mode
-            skips it — there is nothing dark left for it to bloom into. */}
-        {ringStyle !== 'screen' && (
+            sells the illusion that the panel is actually glowing. The flood
+            styles skip it — there is nothing dark left for it to bloom into. */}
+        {!isFloodStyle(ringStyle) && (
         <Animated.View style={[StyleSheet.absoluteFill, haloStyle]}>
           <Svg width={size} height={size}>
             <Defs>
@@ -240,22 +212,6 @@ function RingLightImpl({
           </Animated.View>
         )}
 
-        {ringStyle === 'flood' && (
-          // The panel behind is doing the work here, so all that is left is a
-          // bright rim to keep a catchlight in the eye.
-          <Animated.View style={[StyleSheet.absoluteFill, solidStyle]}>
-            <Svg width={size} height={size}>
-              <Circle
-                cx={centre}
-                cy={centre}
-                r={windowRadius + 9}
-                stroke={fill}
-                strokeWidth={14}
-                fill="none"
-              />
-            </Svg>
-          </Animated.View>
-        )}
       </View>
     </View>
   );

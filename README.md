@@ -14,9 +14,14 @@ Reanimated 4.
   <img src="docs/screen-max-bare.png" width="185" alt="Max mode with controls hidden">
 </p>
 
+<p align="center">
+  <img src="docs/screen-flood-small.png" width="185" alt="Flood with the preview pinched small">
+  <img src="docs/screen-flood-large.png" width="185" alt="Flood with the preview pinched large">
+</p>
+
 <p align="center"><sub>
-Dots at 100%/6500 K and 72%/3400 K, then Max mode with and without the
-controls. These are renders produced by feeding <code>lib/colour.ts</code> and
+Dots at 100%/6600 K and 72%/3400 K, Max mode with and without the controls,
+then Flood pinched to each end of its range. These are renders produced by feeding <code>lib/colour.ts</code> and
 <code>lib/geometry.ts</code> — the same modules the app runs — into a static
 SVG, not device screenshots, so the preview area is a placeholder.
 </sub></p>
@@ -33,9 +38,12 @@ the dial:
   lands on a face. Your original brightness is captured on the way in and handed
   back when you leave, background the app, or switch the light off.
 
-**Colour temperature is physical.** Seven presets from 1900 K to 8000 K are
+**Colour temperature is physical.** Six presets from 1900 K to 6600 K are
 converted to sRGB along the Planckian locus (Tanner Helland's piecewise fit), so
 "Tungsten" really is tungsten-coloured rather than a guessed shade of orange.
+The top of the range, **Max day**, sits at 6600 K, which is exactly where that
+fit puts all three channels at 255 — pure white and the most luminous point
+available, so it is the one to pick when you want light rather than a look.
 
 **Five light styles**, which trade catchlight shape against raw output:
 
@@ -46,6 +54,11 @@ converted to sRGB along the Planckian locus (Tanner Helland's piecewise fit), so
 | Beauty | Wide feathered ring — softest shadows                     |
 | Flood  | The area around the preview, in your chosen temperature   |
 | Max    | Every pixel white, edge to edge, bar the preview          |
+
+In the two flood styles the preview is a hole in a lit field, so **pinch to
+resize it** — a smaller circle means more lit panel and more light. The ring
+styles keep the default size, because their geometry is built around the window
+radius.
 
 **Max** is the one to reach for when you need light rather than a look, and it
 has a chip on the main screen rather than living in Settings. It lights about
@@ -67,6 +80,7 @@ everything filed into a "Halo" album in the camera roll.
 | Tap the light                  | Hide the controls; tap again to restore |
 | Tap the yellow bolt            | Light on/off                            |
 | Tap **Max**                    | Full-screen white, and back again       |
+| Pinch (Flood and Max)          | Resize the preview circle, 55%–135%     |
 
 ## Getting it on your phone
 
@@ -134,7 +148,7 @@ app/
   index.tsx          Capture screen: permissions, brightness, shutter, timers
   settings.tsx       Ring style, temperature, behaviour toggles
 components/
-  RingLight.tsx      The light. Dot field, bloom, halo/beauty/flood styles
+  RingLight.tsx      The ring styles: dot field, bloom, halo, beauty
   CameraWindow.tsx   Round front-camera preview + the mask that rounds it
   IntensityDial.tsx  Rotary knob wrapping the shutter
   PresetArc.tsx      Curved temperature wheel
@@ -142,7 +156,7 @@ components/
 lib/
   colour.ts          Kelvin → sRGB, the intensity curve, per-ring levels
   geometry.ts        Dot-field layout, arc paths, dial angle maths
-  presets.ts         Temperatures and ring styles
+  presets.ts         Temperatures, ring styles, pinch bounds
   store.ts           Persisted settings (zustand + AsyncStorage)
   useScreenBrightness.ts  Backlight control with restore-on-exit
   useMediaSaver.ts   Saving into the Halo album
@@ -161,6 +175,16 @@ order or the mask will eat the dots at the corners of the preview's bounding box
 Reanimated shared value; the ring, arc, marker and glow are all derived from it
 on the UI thread. Only two things hop back to JS — a throttled backlight write
 and the haptic detents — and both are gated on a whole-number change.
+
+**The pinch resizes by transform, never by re-layout.** In the flood styles the
+camera window is laid out at its *largest* and scaled down, so dragging two
+fingers never re-lays-out the camera surface and the preview is only ever
+downsampled rather than stretched. On release the gesture factor is folded into
+the committed scale in the same worklet frame, which is what stops the circle
+jumping. That also drove a simplification: the flood styles now paint a plain
+colour layer *behind* the preview and let the window mask its own square
+corners, instead of `RingLight` punching a hole that would have to track the
+pinch. `RingLight` is back to being only the ring styles.
 
 **Each dot ring is a single `<Path>`, not ~70 `<Circle>`s.** `dotsToPath` walks
 the ring and emits two arcs per dot, which takes the dot field from a couple of

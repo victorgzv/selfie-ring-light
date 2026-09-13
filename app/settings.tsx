@@ -7,7 +7,7 @@ import { IconButton } from '@/components/IconButton';
 import { CheckIcon, CloseIcon } from '@/components/icons';
 import { kelvinToRgb, rgbToCss } from '@/lib/colour';
 import { selectHaptic, testHaptics } from '@/lib/haptics';
-import { RING_STYLES, TEMPERATURES } from '@/lib/presets';
+import { DEFAULT_WINDOW_SCALE, RING_STYLES, TEMPERATURES } from '@/lib/presets';
 import { useLightStore } from '@/lib/store';
 
 const ACCENT = '#FFD400';
@@ -26,6 +26,8 @@ export default function SettingsScreen() {
   const setSyncScreenBrightness = useLightStore((s) => s.setSyncScreenBrightness);
   const hapticsEnabled = useLightStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useLightStore((s) => s.setHapticsEnabled);
+  const windowScale = useLightStore((s) => s.windowScale);
+  const setWindowScale = useLightStore((s) => s.setWindowScale);
 
   return (
     <View className="flex-1 bg-ink" style={{ paddingTop: insets.top }}>
@@ -78,6 +80,36 @@ export default function SettingsScreen() {
           ))}
         </Section>
 
+        <Section
+          title="Preview size"
+          caption="Pinch on the light in Flood or Max to resize the preview circle. Smaller circle, more lit panel."
+        >
+          <View className="flex-row items-center gap-3 px-4 py-3.5">
+            <View className="flex-1">
+              <Text className="text-[15px] font-medium text-white">
+                {Math.round(windowScale * 100)}% of default
+              </Text>
+              <Text className="mt-0.5 text-[12px] leading-4 text-white/40">
+                The ring styles always use the default — their geometry is built
+                around it.
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset preview size"
+              disabled={windowScale === DEFAULT_WINDOW_SCALE}
+              onPress={() => {
+                selectHaptic();
+                setWindowScale(DEFAULT_WINDOW_SCALE);
+              }}
+              style={{ opacity: windowScale === DEFAULT_WINDOW_SCALE ? 0.3 : 1 }}
+              className="rounded-full bg-white/10 px-3.5 py-2"
+            >
+              <Text className="text-[12px] font-semibold text-white">Reset</Text>
+            </Pressable>
+          </View>
+        </Section>
+
         <Section title="Behaviour">
           <Toggle
             title="Boost screen brightness"
@@ -120,8 +152,9 @@ export default function SettingsScreen() {
           <Text className="px-1 text-[13px] leading-6 text-white/50">
             Swipe up and down anywhere on the light to change intensity, or turn
             the ring around the shutter for finer control. Drag the curved row of
-            names to change colour temperature. Tap the light to hide the controls
-            for a clean panel, and tap again to bring them back.
+            names to change colour temperature. In Flood and Max, pinch to resize
+            the preview circle. Tap the light to hide the controls for a clean
+            panel, and tap again to bring them back.
           </Text>
         </Section>
       </ScrollView>

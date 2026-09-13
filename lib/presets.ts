@@ -1,4 +1,6 @@
-import { kelvinToRgb, type Rgb } from './colour';
+// Explicit extension so `npm test` can load this under node's type stripper,
+// which does no module resolution of its own. Metro and tsc both accept it.
+import { kelvinToRgb, type Rgb } from './colour.ts';
 
 /** A named point on the Planckian locus, chosen to match real lighting kit. */
 export type Temperature = {
@@ -16,8 +18,7 @@ export type TemperatureId =
   | 'warm'
   | 'neutral'
   | 'daylight'
-  | 'cloudy'
-  | 'shade';
+  | 'maxday';
 
 export const TEMPERATURES: readonly Temperature[] = [
   { id: 'candle', label: 'Candle', kelvin: 1900, hint: 'Deep amber. Evening mood, heavy warmth.' },
@@ -25,8 +26,15 @@ export const TEMPERATURES: readonly Temperature[] = [
   { id: 'warm', label: 'Warm', kelvin: 3400, hint: 'Soft golden key. The safe default for selfies.' },
   { id: 'neutral', label: 'Neutral', kelvin: 4300, hint: 'True-to-life colour. Good for makeup and detail.' },
   { id: 'daylight', label: 'Daylight', kelvin: 5600, hint: 'Studio standard. Matches window light.' },
-  { id: 'cloudy', label: 'Cloudy', kelvin: 6500, hint: 'Crisp and bright. Cuts through warm rooms.' },
-  { id: 'shade', label: 'Shade', kelvin: 8000, hint: 'Cool blue. Editorial, high-contrast look.' },
+  {
+    id: 'maxday',
+    label: 'Max day',
+    // 6600K is where the Planckian fit puts every channel at 255. It is both
+    // pure white and the most luminous point available, so it is the right
+    // choice whenever you want light rather than a look.
+    kelvin: 6600,
+    hint: 'Pure white, every channel at full. The brightest the panel goes.',
+  },
 ] as const;
 
 export const DEFAULT_TEMPERATURE_ID: TemperatureId = 'warm';
@@ -66,6 +74,27 @@ export const RING_STYLES: readonly RingStyle[] = [
     hint: 'Every pixel white, edge to edge, bar the preview. Ignores colour temperature — this is the most light the phone can physically make.',
   },
 ] as const;
+
+/** How far the preview circle can be pinched, as a multiple of its default. */
+export const MIN_WINDOW_SCALE = 0.55;
+export const MAX_WINDOW_SCALE = 1.35;
+export const DEFAULT_WINDOW_SCALE = 1;
+
+export const clampWindowScale = (value: number): number => {
+  'worklet';
+  return value < MIN_WINDOW_SCALE
+    ? MIN_WINDOW_SCALE
+    : value > MAX_WINDOW_SCALE
+      ? MAX_WINDOW_SCALE
+      : value;
+};
+
+
+
+/** True for the styles that light a field with the preview punched out of it,
+ *  rather than drawing a ring. These are the ones the pinch gesture resizes. */
+export const isFloodStyle = (id: RingStyleId): boolean =>
+  id === 'flood' || id === 'screen';
 
 /** Ring styles whose output is limited by how little of the panel they light. */
 export const isFullScreenStyle = (id: RingStyleId): boolean => id === 'screen';

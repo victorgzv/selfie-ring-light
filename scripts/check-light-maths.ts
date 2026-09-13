@@ -24,6 +24,15 @@ import {
   polar,
   shortestAngleDelta,
 } from '../lib/geometry.ts';
+import {
+  MAX_MODE_COLOUR,
+  MAX_WINDOW_SCALE,
+  MIN_WINDOW_SCALE,
+  TEMPERATURES,
+  clampWindowScale,
+  isFloodStyle,
+  rgbForTemperature,
+} from '../lib/presets.ts';
 
 let failures = 0;
 
@@ -66,6 +75,33 @@ check(
     const c = scaleRgb(kelvinToRgb(3400), f);
     return [c.r, c.g, c.b].every((v) => v >= 0 && v <= 255);
   }),
+);
+
+console.log('\nPresets');
+for (const t of TEMPERATURES) {
+  const c = rgbForTemperature(t.id);
+  console.log(
+    `   ${t.label.padEnd(10)} ${String(t.kelvin).padStart(5)}K  ${rgbToCss(c).padEnd(22)} luminance ${luminance(c).toFixed(3)}`,
+  );
+}
+const maxDay = rgbForTemperature('maxday');
+check(
+  'Max day is literally pure white',
+  maxDay.r === 255 && maxDay.g === 255 && maxDay.b === 255,
+  rgbToCss(maxDay),
+);
+check('Max day is the most luminous preset', TEMPERATURES.every((t) => luminance(rgbForTemperature(t.id)) <= luminance(maxDay)));
+check(
+  'Max mode paints the same white as Max day',
+  MAX_MODE_COLOUR.r === maxDay.r && MAX_MODE_COLOUR.g === maxDay.g && MAX_MODE_COLOUR.b === maxDay.b,
+);
+check('the retired presets are gone', !TEMPERATURES.some((t) => t.id === ('shade' as never) || t.id === ('cloudy' as never)));
+check('only the flood styles resize', isFloodStyle('flood') && isFloodStyle('screen') && !isFloodStyle('dots') && !isFloodStyle('halo') && !isFloodStyle('beauty'));
+check(
+  'the pinch scale clamps to its range',
+  clampWindowScale(0.1) === MIN_WINDOW_SCALE &&
+    clampWindowScale(9) === MAX_WINDOW_SCALE &&
+    clampWindowScale(1) === 1,
 );
 
 console.log('\nIntensity curve and per-ring levels');
@@ -171,6 +207,31 @@ check('dots cover at least a quarter of the ring band', litArea / bandArea > 0.2
 const path = dotsToPath(field[0]!.dots);
 check('the path emits two arcs per dot', (path.match(/a/g) ?? []).length === field[0]!.dots.length * 2);
 check('the path emits one move per dot', (path.match(/M/g) ?? []).length === field[0]!.dots.length);
+
+// The ring styles keep the default window size, but a stored pinch scale is
+// still applied to the geometry the moment someone switches back — so the dot
+// field has to survive the whole range without colliding or escaping.
+console.log('\nDot field across the pinch range');
+for (const scale of [MIN_WINDOW_SCALE, 0.8, 1, 1.15, MAX_WINDOW_SCALE]) {
+  const wr = CANVAS * 0.295 * scale;
+  const rings = buildDotField(CANVAS, wr);
+  const clearsWindow = rings.every((r) =>
+    r.dots.every((d) => Math.hypot(d.cx - CENTRE, d.cy - CENTRE) - d.r > wr - 0.01),
+  );
+  const insideCanvas = rings.every((r) =>
+    r.dots.every((d) => d.cx - d.r >= -0.01 && d.cx + d.r <= CANVAS + 0.01),
+  );
+  const noCollision = rings.every((ring, i) => {
+    const next = rings[i + 1];
+    return !next || next.radius - next.dots[0]!.r > ring.radius + ring.dots[0]!.r;
+  });
+  const counts = rings.map((r) => r.dots.length).join('/');
+  check(
+    `scale ${scale.toFixed(2)} stays well formed`,
+    clearsWindow && insideCanvas && noCollision,
+    `window ${wr.toFixed(0)}px, dots ${counts}`,
+  );
+}
 
 console.log('\nDial angle maths');
 check("12 o'clock reads 0deg", Math.abs(angleFromCentre(50, 50, 0)) < 1e-9);

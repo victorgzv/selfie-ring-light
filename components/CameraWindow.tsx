@@ -24,6 +24,16 @@ type Props = {
    */
   floodLevel: SharedValue<number>;
   floodColour: string;
+  /**
+   * Visual size multiplier, driven by the pinch gesture. 1 means "exactly the
+   * laid-out size".
+   *
+   * The pinch resizes the circle through a transform rather than by changing
+   * `size`, so the camera surface is never re-laid-out mid-gesture. In the
+   * flood styles the caller lays this out at its largest and scales down, so
+   * the preview is only ever downsampled, never stretched.
+   */
+  scale: SharedValue<number>;
   /** Rim tint, so the preview edge stays readable against a bright ring. */
   rimColour: string;
   granted: boolean;
@@ -53,6 +63,7 @@ function CameraWindowImpl(
     maskColour,
     floodLevel,
     floodColour,
+    scale,
     rimColour,
     granted,
     active,
@@ -68,9 +79,15 @@ function CameraWindowImpl(
   const donut = `M0,0 H${size} V${size} H0 Z M${radius},0 A${radius},${radius} 0 1,0 ${radius},${size} A${radius},${radius} 0 1,0 ${radius},0 Z`;
 
   const floodMaskStyle = useAnimatedStyle(() => ({ opacity: floodLevel.value }));
+  // Everything scales as one unit, so the mask keeps covering exactly the
+  // corners it is meant to at any size.
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   return (
     <View style={{ width: size, height: size }}>
+      <Animated.View style={[StyleSheet.absoluteFill, scaleStyle]}>
       {granted ? (
         <CameraView
           ref={ref}
@@ -131,6 +148,7 @@ function CameraWindowImpl(
           fill="none"
         />
       </Svg>
+      </Animated.View>
     </View>
   );
 }
