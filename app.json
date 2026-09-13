@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Halo",
+    "slug": "selfie-ring-light",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "halo",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.halo.selfieringlight",
+      "requireFullScreen": true,
+      "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": true
+      },
+      "backgroundColor": "#000000"
+    },
+    "android": {
+      "package": "com.halo.selfieringlight",
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "backgroundColor": "#000000"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Halo uses the front camera to show your live selfie preview inside the ring light.",
+          "microphonePermission": "Halo records audio with your videos so your clips are not silent.",
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Halo needs access to your library to show your latest shot.",
+          "savePhotosPermission": "Halo saves the photos and videos you capture to your library.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ],
+      "expo-system-ui"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
